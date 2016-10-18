@@ -45,8 +45,10 @@ class KMeans {
   def classify(points: GenSeq[Point], means: GenSeq[Point]): GenMap[Point, GenSeq[Point]] = {
     if (points.isEmpty)
       means.map { x => (x, GenSeq()) } toMap
-    else
-      points.groupBy { p => findClosest(p, means) }
+    else {
+      val g = points.groupBy { p => findClosest(p, means) }
+      means.map { m => (m, g.getOrElse(m, GenSeq())) }.toMap
+    }
   }
 
   def findAverage(oldMean: Point, points: GenSeq[Point]): Point = if (points.length == 0) oldMean else {
@@ -62,19 +64,29 @@ class KMeans {
   }
 
   def update(classified: GenMap[Point, GenSeq[Point]], oldMeans: GenSeq[Point]): GenSeq[Point] = {
-    oldMeans.map { p => findAverage(p, classified.get(p).get) }
+    oldMeans.par.map { p => findAverage(p, classified.get(p).get) }
   }
 
   def converged(eta: Double)(oldMeans: GenSeq[Point], newMeans: GenSeq[Point]): Boolean = {
-    oldMeans.zip(newMeans).forall { p => p._1.squareDistance(p._2) <= eta }
+    oldMeans.zip(newMeans).par.forall { p => p._1.squareDistance(p._2) <= eta }
   }
 
+  /*
+2. Associate each input point with the mean that is closest to it. 
+We obtain k clusters of points, and we refer to this process as classifying the points.
+3. Update each mean to have the average value of the corresponding cluster.
+4. If the k means have significantly changed, go back to step 2. 
+If they did not, we say that the algorithm converged.   
+*/
+  
   @tailrec
   final def kMeans(points: GenSeq[Point], means: GenSeq[Point], eta: Double): GenSeq[Point] = {
-    if (!converged(eta)(means, update(classify(points, means), means))) 
-      kMeans(points, update(classify(points, means), means), eta) 
+    val c = classify(points, means)
+    val newMeans = update(c, means)
+    if (!converged(eta)(means, newMeans)) 
+      kMeans(points, newMeans, eta) 
     else 
-      means // your implementation need to be tail recursive
+      newMeans // your implementation need to be tail recursive
   }
 }
 
